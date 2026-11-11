@@ -182,7 +182,11 @@ class RootfsManager {
         // payload bigger even though the zip never changes between builds.
         // A bundle copy still wins when present (dev builds / older IPAs).
         let zipURL: URL
-        if let bundled = Bundle.main.url(forResource: "alpine-rootfs", withExtension: "zip") {
+        // A tiny bundle entry is a build-time placeholder (the CI ships a stub
+        // so the Xcode file reference resolves); only a real image counts.
+        if let bundled = Bundle.main.url(forResource: "alpine-rootfs", withExtension: "zip"),
+           let size = try? bundled.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size > 1_000_000 {
             zipURL = bundled
         } else {
             zipURL = try downloadedRootfsURL()

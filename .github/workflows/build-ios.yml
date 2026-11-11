@@ -78,6 +78,9 @@ jobs:
           echo "=== build_ish.sh ==="
           ./deps/build_ish.sh
           echo "=== prepare_alpine_rootfs.sh (skipped: downloaded on first launch) ==="
+          mkdir -p deps/resources
+          # Placeholder only: the real image is fetched on first launch.
+          printf "placeholder" > deps/resources/alpine-rootfs.zip
           echo "=== build_rclone_ios.sh ==="
           ./deps/build_rclone_ios.sh
 
