@@ -226,7 +226,7 @@ class RootfsManager {
     /// the image itself changes; the file is content-stable between app builds.
     static let remoteRootfsURL = URL(string: "https://github.com/at9870451-bit/amore-ios/releases/download/rootfs-v1/alpine-rootfs.zip")!
 
-    private var downloadedRootfsURL: URL {
+    private var downloadedRootfsFile: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return docs.appendingPathComponent("alpine-rootfs-download.zip")
     }
@@ -236,7 +236,7 @@ class RootfsManager {
     /// runs once per install (the result is cached on disk and reused).
     private func downloadedRootfsURL() throws -> URL {
         let fm = FileManager.default
-        let dest = downloadedRootfsURL
+        let dest = downloadedRootfsFile
         let expected = 3_984_116
 
         if fm.fileExists(atPath: dest.path),
@@ -283,7 +283,7 @@ class RootfsManager {
                 NSLocalizedDescriptionKey: "Rootfs download timed out"
             ])
         }
-        if let failure { throw failure }
+        if let failure { throw failure as Error }
         guard let downloaded else {
             throw NSError(domain: "RootfsManager", code: 5, userInfo: [
                 NSLocalizedDescriptionKey: "Rootfs download failed"
