@@ -20,6 +20,7 @@ jobs:
 
       - name: Clone sources from the OpenMinis fork
         run: |
+          rm -rf src
           git clone --depth 1 --branch feat/ios-build \
             https://github.com/at9870451-bit/OpenMinis.git src
           ls src/flutter_skeleton
