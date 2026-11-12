@@ -46,7 +46,13 @@ jobs:
       - name: Install build tools
         run: |
           brew install ninja llvm lld libarchive pkg-config meson >/dev/null
+          # deps/build_ish.sh probes for meson on PATH the way pip installs it;
+          # make the brew one discoverable under both names.
+          sudo ln -sf "$(command -v meson)" /usr/local/bin/meson || true
+          export PATH="/opt/homebrew/bin:$PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           meson --version
+          python3 -c "import mesonbuild" 2>/dev/null || pip3 install --break-system-packages meson || true
           cargo install flutter_rust_bridge_codegen --version 2.7.0 --locked
 
       - name: Build iSH static libraries
