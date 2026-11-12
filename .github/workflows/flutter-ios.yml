@@ -89,9 +89,39 @@ jobs:
         working-directory: src/flutter_skeleton/app
         run: |
           mkdir -p ios/ish_host
-          cp ../../deps/libs/*.a ios/ish_host/ 2>/dev/null || true
-          cp ../native/ios/ish_host/* ios/ish_host/ 2>/dev/null || true
-          grep -q ISHHost ios/Podfile || echo "  pod 'ISHHost', :path => './ish_host'" >> ios/Podfile
+          cp ../../deps/libs/*.a ios/ish_host/ || true
+          cp ../native/ios/ish_host/*.h ../native/ios/ish_host/*.c \
+             ../native/ios/ish_host/*.swift ../native/ios/ish_host/*.podspec ios/ish_host/ || true
+          cp -r ../native/ios/ish_host/stubs ios/ish_host/ || true
+          # Kernel wrappers: the only app-coupled file is ISHKernel.m, whose two
+          # host imports are redirected to the stubs.
+          cp ../../src/ios/iSH/ISHKernel.h ../../src/ios/iSH/ISHShellExecutor.h \
+             ../../src/ios/iSH/CurrentRoot.h ios/ish_host/
+          cp ../../src/ios/iSH/ISHKernel.m ../../src/ios/iSH/ISHShellExecutor.m \
+             ../../src/ios/iSH/CurrentRoot.m ios/ish_host/
+          sed -i '' -e 's|#import "../Diagnostics/CrashSignalHandler.h"|#import "CrashSignalHandler.h"|' \
+                     -e 's|#import "../Diagnostics/CrashSignalPolicy.h"|#import "CrashSignalPolicy.h"|' \
+                     -e 's|#import "Minis-Swift.h"|#import "Minis-Swift.h"|' \
+                     ios/ish_host/ISHKernel.m
+          ls ios/ish_host
+          grep -q ISHHost ios/Podfile || printf "  pod 'ISHHost', :path => './ish_host'\n" >> ios/Podfile
+          # Local pods are not auto-registered by GeneratedPluginRegistrant.
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path('ios/Runner/AppDelegate.swift')
+          s = p.read_text()
+          if 'AmoreNativePlugin' not in s:
+              s = s.replace('import Flutter', 'import Flutter\nimport ISHHost')
+              s = s.replace('return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
+                            'if let reg = self.registrar(forPlugin: "AmoreNativePlugin") {\n'
+                            '        AmoreNativePlugin.register(with: reg)\n'
+                            '    }\n'
+                            '    return super.application(application, didFinishLaunchingWithOptions: launchOptions)')
+              p.write_text(s)
+              print('AppDelegate patched')
+          else:
+              print('AppDelegate already patched')
+          PY
           cd ios && pod install
 
       - name: Build app (unsigned)
