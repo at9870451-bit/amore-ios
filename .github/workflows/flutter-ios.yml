@@ -136,7 +136,12 @@ jobs:
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            build 2>&1 | tail -40
+            build > xcodebuild.log 2>&1 || true
+          echo "=== first errors ==="
+          grep -n -m 25 "error:" xcodebuild.log || true
+          echo "=== tail ==="
+          tail -25 xcodebuild.log
+          grep -q "BUILD SUCCEEDED" xcodebuild.log
 
       - name: Package IPA
         working-directory: src/flutter_skeleton/app
