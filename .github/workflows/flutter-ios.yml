@@ -99,6 +99,11 @@ jobs:
              ../../src/ios/iSH/CurrentRoot.h ios/ish_host/
           cp ../../src/ios/iSH/ISHKernel.m ../../src/ios/iSH/ISHShellExecutor.m \
              ../../src/ios/iSH/CurrentRoot.m ios/ish_host/
+          # The kernel imports ~20 native-offload headers that only exist in the
+          # host app (FFmpeg/HealthKit/HomeKit/... offloads). None of their
+          # register functions are called from this file, so dropping the
+          # imports keeps the kernel compiling in the Flutter runner.
+          sed -i '' -e '/#import ".*Offload\.h"/d' ios/ish_host/ISHKernel.m
           sed -i '' -e 's|#import "../Diagnostics/CrashSignalHandler.h"|#import "CrashSignalHandler.h"|' \
                      -e 's|#import "../Diagnostics/CrashSignalPolicy.h"|#import "CrashSignalPolicy.h"|' \
                      -e 's|#import "Minis-Swift.h"|#import "Minis-Swift.h"|' \
