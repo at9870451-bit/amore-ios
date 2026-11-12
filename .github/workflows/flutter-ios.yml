@@ -91,7 +91,7 @@ jobs:
           mkdir -p ios/ish_host
           cp ../../deps/libs/*.a ios/ish_host/ || true
           cp ../native/ios/ish_host/*.h ../native/ios/ish_host/*.c \
-             ../native/ios/ish_host/*.swift ../native/ios/ish_host/*.podspec ios/ish_host/ || true
+             ../native/ios/ish_host/*.m ../native/ios/ish_host/*.podspec ios/ish_host/ || true
           cp -r ../native/ios/ish_host/stubs ios/ish_host/ || true
           # Kernel wrappers: the only app-coupled file is ISHKernel.m, whose two
           # host imports are redirected to the stubs.
