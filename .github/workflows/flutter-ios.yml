@@ -1,0 +1,121 @@
+name: Flutter iOS IPA
+
+# Public repository → GitHub-hosted macOS minutes are free (they do not draw
+# from the account's 2,000-minute private quota). The sources live in the
+# OpenMinis fork, so this job clones them instead of duplicating ~4,000 files.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build Amore (Flutter + Rust)
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Checkout (workflow only)
+        uses: actions/checkout@v4
+
+      - name: Clone sources from the OpenMinis fork
+        run: |
+          git clone --depth 1 --branch feat/ios-build \
+            https://github.com/at9870451-bit/OpenMinis.git src
+          ls src/flutter_skeleton
+
+      - name: Init submodules (iSH kernel)
+        working-directory: src
+        run: |
+          git submodule update --init --recursive
+          ls deps/ish | head -3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Setup Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+
+      - name: Install build tools
+        run: |
+          brew install ninja llvm lld libarchive pkg-config meson >/dev/null
+          meson --version
+          cargo install flutter_rust_bridge_codegen --version 2.7.0 --locked
+
+      - name: Build iSH static libraries
+        working-directory: src
+        env:
+          PATH: /opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+        run: |
+          chmod -R +x deps scripts || true
+          ./deps/build_ish.sh
+          ls -lh deps/libs/*.a
+
+      - name: Rust unit tests
+        working-directory: src/flutter_skeleton/rust
+        run: cargo test -- --nocapture
+
+      - name: Generate bridge + Drift code
+        working-directory: src/flutter_skeleton/app
+        run: |
+          flutter create --platforms=ios --org com.openamroe .
+          rm -f test/widget_test.dart
+          flutter pub get
+          mkdir -p lib/src/rust
+          flutter_rust_bridge_codegen generate
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Flutter tests
+        working-directory: src/flutter_skeleton/app
+        run: |
+          (cd ../rust && cargo build --release)
+          cp ../rust/target/release/libamore_core.dylib . || true
+          DYLD_LIBRARY_PATH="$PWD:../rust/target/release" flutter test -r expanded
+
+      - name: Link iSH archives + pod install
+        working-directory: src/flutter_skeleton/app
+        run: |
+          mkdir -p ios/ish_host
+          cp ../../deps/libs/*.a ios/ish_host/ 2>/dev/null || true
+          cp ../native/ios/ish_host/* ios/ish_host/ 2>/dev/null || true
+          grep -q ISHHost ios/Podfile || echo "  pod 'ISHHost', :path => './ish_host'" >> ios/Podfile
+          cd ios && pod install
+
+      - name: Build app (unsigned)
+        working-directory: src/flutter_skeleton/app
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tail -40
+
+      - name: Package IPA
+        working-directory: src/flutter_skeleton/app
+        run: |
+          set -e
+          APP=$(find build/ios/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "Found: $APP"
+          rm -rf Payload && mkdir -p Payload && cp -r "$APP" Payload/
+          zip -r -y Amore-Flutter.ipa Payload
+          ls -lh Amore-Flutter.ipa
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: amore-flutter-ipa
+          path: src/flutter_skeleton/app/Amore-Flutter.ipa
+          if-no-files-found: error
+          retention-days: 14
