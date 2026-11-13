@@ -104,6 +104,8 @@ jobs:
           # register functions are called from this file, so dropping the
           # imports keeps the kernel compiling in the Flutter runner.
           sed -i '' -e '/#import ".*Offload\.h"/d' ios/ish_host/ISHKernel.m
+          # Their register calls go too: the Flutter runner has no offloads.
+          sed -i '' -e '/_offload_register();/d' ios/ish_host/ISHKernel.m
           sed -i '' -e 's|#import "../Diagnostics/CrashSignalHandler.h"|#import "CrashSignalHandler.h"|' \
                      -e 's|#import "../Diagnostics/CrashSignalPolicy.h"|#import "CrashSignalPolicy.h"|' \
                      -e 's|#import "Minis-Swift.h"|#import "Minis-Swift.h"|' \
