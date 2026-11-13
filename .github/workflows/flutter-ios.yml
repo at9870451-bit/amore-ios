@@ -85,12 +85,38 @@ jobs:
           cp ../rust/target/release/libamore_core.dylib . || true
           DYLD_LIBRARY_PATH="$PWD:../rust/target/release" flutter test -r expanded
 
-      - name: Build Rust core for iOS
+      - name: Build Rust core for iOS (dynamic framework)
         working-directory: src/flutter_skeleton/rust
         run: |
           set -e
+          # frb's iOS loader dlopens `amore_core.framework/amore_core`, so the
+          # core has to ship as a dynamic framework — a static .a links fine but
+          # the loader never looks at it.
           cargo build --release --target aarch64-apple-ios
-          ls -lh target/aarch64-apple-ios/release/libamore_core.a
+          DYLIB=target/aarch64-apple-ios/release/libamore_core.dylib
+          ls -lh "$DYLIB"
+          FR=../app/ios/ish_host/amore_core.framework
+          rm -rf "$FR"; mkdir -p "$FR"
+          cp "$DYLIB" "$FR/amore_core"
+          install_name_tool -id "@rpath/amore_core.framework/amore_core" "$FR/amore_core"
+          cat > "$FR/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleExecutable</key><string>amore_core</string>
+            <key>CFBundleIdentifier</key><string>com.openamroe.amore-core</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>amore_core</string>
+            <key>CFBundlePackageType</key><string>FMWK</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>MinimumOSVersion</key><string>15.0</string>
+          </dict>
+          </plist>
+          PLIST
+          ls -lh "$FR"
 
       - name: Link iSH archives + pod install
         working-directory: src/flutter_skeleton/app
@@ -99,7 +125,7 @@ jobs:
           # The Rust core must be linked into the app binary: frb resolves its
           # symbols via DynamicLibrary.process(), so an unlinked staticlib gives
           # a blank/broken app on device.
-          cp ../rust/target/aarch64-apple-ios/release/libamore_core.a ios/ish_host/
+          # framework already created by the previous step; nothing to copy
           cp ../../deps/libs/*.a ios/ish_host/ || true
           cp ../native/ios/ish_host/*.h ../native/ios/ish_host/*.c \
              ../native/ios/ish_host/*.m ../native/ios/ish_host/*.podspec ios/ish_host/ || true
