@@ -85,10 +85,21 @@ jobs:
           cp ../rust/target/release/libamore_core.dylib . || true
           DYLD_LIBRARY_PATH="$PWD:../rust/target/release" flutter test -r expanded
 
+      - name: Build Rust core for iOS
+        working-directory: src/flutter_skeleton/rust
+        run: |
+          set -e
+          cargo build --release --target aarch64-apple-ios
+          ls -lh target/aarch64-apple-ios/release/libamore_core.a
+
       - name: Link iSH archives + pod install
         working-directory: src/flutter_skeleton/app
         run: |
           mkdir -p ios/ish_host
+          # The Rust core must be linked into the app binary: frb resolves its
+          # symbols via DynamicLibrary.process(), so an unlinked staticlib gives
+          # a blank/broken app on device.
+          cp ../rust/target/aarch64-apple-ios/release/libamore_core.a ios/ish_host/
           cp ../../deps/libs/*.a ios/ish_host/ || true
           cp ../native/ios/ish_host/*.h ../native/ios/ish_host/*.c \
              ../native/ios/ish_host/*.m ../native/ios/ish_host/*.podspec ios/ish_host/ || true
