@@ -29,11 +29,21 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet -B feat/ios-build origin/feat/ios-build
+          git checkout --quiet --detach f9a860cd8801d4f7378eb1a22e61a083fc25b800
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
           echo "source tree ready: $(ls src/ios | wc -l) entries"
+          git -C /tmp/base rev-parse HEAD | tee source-commit.txt
+          mkdir -p scripts
+          cp /tmp/base/scripts/test-plugin-import.sh scripts/
+          cp /tmp/base/scripts/plugin-install-tests.swift scripts/
+      - name: Test ZIP import and actual installer
+        run: |
+          set -o pipefail
+          swift test --package-path src/ios/Packages/AmorePluginArchive 2>&1 | tee plugin-archive-tests.log
+          bash scripts/test-plugin-import.sh
+
       - name: Setup Go (pin 1.25.5 per deps/rclone-mobile/go.mod)
         uses: actions/setup-go@v5
         with:
@@ -129,4 +139,16 @@ jobs:
           name: minis-ios-ipa
           path: Minis-Release.ipa
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: |
+            build.log
+            plugin-archive-tests.log
+            plugin-install-tests.log
+            source-commit.txt
+          if-no-files-found: warn
           retention-days: 7
