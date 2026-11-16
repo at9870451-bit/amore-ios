@@ -22,6 +22,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Pin source tree to the 88.5 baseline commit
+        run: |
+          set -e
+          rm -rf src
+          git clone --quiet https://github.com/at9870451-bit/OpenMinis.git src
+          cd src && git checkout -q 8321cf9d
+          cd .. && echo "baseline src ready" && ls src/ios | head -5
+
       - name: Setup Go (pin 1.25.5 per deps/rclone-mobile/go.mod)
         uses: actions/setup-go@v5
         with:
