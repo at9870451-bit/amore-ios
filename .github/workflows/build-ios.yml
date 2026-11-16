@@ -25,12 +25,15 @@ jobs:
       - name: Pin source tree to the 88.5 baseline commit
         run: |
           set -e
-          rm -rf src
-          git clone --quiet https://github.com/at9870451-bit/OpenMinis.git src
-          cd src && git fetch --quiet origin feat/ios-build && git checkout --quiet -B feat/ios-build origin/feat/ios-build
-          test -f ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing in checkout"; ls ios | head -8; exit 1; }
-          cd .. && echo "baseline src ready"
-
+          rm -rf /tmp/base src
+          git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
+          cd /tmp/base
+          git fetch --quiet origin feat/ios-build
+          git checkout --quiet -B feat/ios-build origin/feat/ios-build
+          cd -
+          cp -R /tmp/base/src src
+          test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
+          echo "source tree ready: $(ls src/ios | wc -l) entries"
       - name: Setup Go (pin 1.25.5 per deps/rclone-mobile/go.mod)
         uses: actions/setup-go@v5
         with:
