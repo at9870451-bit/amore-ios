@@ -30,7 +30,7 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet --detach 6dc14d06b951951ce29af07769a5280428cb08c6
+          git checkout --quiet --detach a72366a952a0f7dd93f36db37a9bececbed7c5e0
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
@@ -163,7 +163,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: at9870451-bit/OpenMinis
-          ref: 6dc14d06b951951ce29af07769a5280428cb08c6
+          ref: a72366a952a0f7dd93f36db37a9bececbed7c5e0
       - name: Test native components and render light/dark references
         run: bash scripts/test-poki-components.sh
       - name: Upload component results
