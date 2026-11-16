@@ -29,7 +29,7 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet --detach f9a860cd8801d4f7378eb1a22e61a083fc25b800
+          git checkout --quiet --detach 237a27769c36d5f7ec12b74acb42968e04ab0c82
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
