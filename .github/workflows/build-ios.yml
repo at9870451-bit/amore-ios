@@ -30,7 +30,7 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet --detach 16cf5bc16f34aa374204fbd9844ef88df975ace0
+          git checkout --quiet --detach 6dc14d06b951951ce29af07769a5280428cb08c6
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
@@ -156,14 +156,14 @@ jobs:
 
   components:
     name: Poki colors, drawer and file picker
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - name: Checkout pinned original App source
         uses: actions/checkout@v4
         with:
           repository: at9870451-bit/OpenMinis
-          ref: 16cf5bc16f34aa374204fbd9844ef88df975ace0
+          ref: 6dc14d06b951951ce29af07769a5280428cb08c6
       - name: Test native components and render light/dark references
         run: bash scripts/test-poki-components.sh
       - name: Upload component results
