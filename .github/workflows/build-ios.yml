@@ -89,7 +89,7 @@ jobs:
             deps/include
             deps/resources
             deps/build/rclone
-          key: native-deps-v1-${{ runner.os }}-${{ hashFiles('deps/*.sh') }}
+          key: native-deps-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.3-${{ hashFiles('deps/*.sh') }}
 
       - name: Build native dependencies
         run: |
