@@ -30,7 +30,7 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet --detach 9dce46bcc20fd0e14e1778b799cbb279fbc7350f
+          git checkout --quiet --detach 6d5e007f032a08ed12fac549cf4c7ebf150629ab
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
@@ -167,7 +167,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: at9870451-bit/OpenMinis
-          ref: 9dce46bcc20fd0e14e1778b799cbb279fbc7350f
+          ref: 6d5e007f032a08ed12fac549cf4c7ebf150629ab
       - name: Test native components and render light/dark references
         run: bash scripts/test-poki-components.sh
       - name: Upload component results
@@ -191,7 +191,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: at9870451-bit/OpenMinis
-          ref: 9dce46bcc20fd0e14e1778b799cbb279fbc7350f
+          ref: 6d5e007f032a08ed12fac549cf4c7ebf150629ab
       - name: Install ARM64 Linux emulation
         run: |
           sudo apt-get update -qq
