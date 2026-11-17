@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     name: Build iOS IPA (arm64 device)
-    needs: components
+    needs: [components, node_runtime]
     runs-on: macos-26
     timeout-minutes: 115
     steps:
@@ -30,7 +30,7 @@ jobs:
           git clone --quiet https://github.com/at9870451-bit/OpenMinis.git /tmp/base
           cd /tmp/base
           git fetch --quiet origin feat/ios-build
-          git checkout --quiet --detach 3ac2dea68a132236cc766bbdae1e90d6851e49c8
+          git checkout --quiet --detach 04ad3b130955ac7592e7676e509d6e1127e8703a
           cd -
           cp -R /tmp/base/src src
           test -f src/ios/Configs/ProviderCustomization.xcconfig.example || { echo "Configs missing"; ls src/ios | head -8; exit 1; }
@@ -39,6 +39,10 @@ jobs:
           mkdir -p scripts
           cp /tmp/base/scripts/test-plugin-import.sh scripts/
           cp /tmp/base/scripts/plugin-install-tests.swift scripts/
+          cp /tmp/base/scripts/verify-node-bundle.py scripts/
+      - name: Verify bundled Node resources
+        run: python3 scripts/verify-node-bundle.py
+
       - name: Test ZIP import and actual installer
         run: |
           set -o pipefail
@@ -163,7 +167,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: at9870451-bit/OpenMinis
-          ref: f83948c44ecc2f694c6f9992b2fa744e0fc3c760
+          ref: 04ad3b130955ac7592e7676e509d6e1127e8703a
       - name: Test native components and render light/dark references
         run: bash scripts/test-poki-components.sh
       - name: Upload component results
@@ -175,5 +179,31 @@ jobs:
             poki-component-tests.log
             poki-component-snapshots
             poki-components.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+  node_runtime:
+    name: Offline Node ARM64 install and npm smoke tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned original App source
+        uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: 04ad3b130955ac7592e7676e509d6e1127e8703a
+      - name: Install ARM64 Linux emulation
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64
+      - name: Verify and install bundled runtime with no network
+        run: bash scripts/test-node-runtime-linux.sh
+      - name: Upload offline Node test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-offline-tests
+          path: node-runtime-linux-tests.log
           if-no-files-found: warn
           retention-days: 7
