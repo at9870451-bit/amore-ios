@@ -1,0 +1,31 @@
+name: Amore 1.34 UI tests
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  components:
+    name: Real Amore 1.34 components
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Test actual components and snapshots
+        run: bash scripts/test-amore134-components.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore134-components
+          path: |
+            amore134-components.log
+            amore134-component-snapshots
+          if-no-files-found: warn
