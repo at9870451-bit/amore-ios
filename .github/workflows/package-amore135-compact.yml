@@ -1,0 +1,99 @@
+name: Package compact final Amore1.35
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify exact compiled source trees and final acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:src)" = 3d2c7a1aa1efeb495c968e3407ad38df4c549ddb
+          test "$(git rev-parse HEAD:vendor/poki)" = e047ea46f786d131b85c1ace27c5233a5f810c97
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+          python3 - <<'PY'
+          import os,json,urllib.request,urllib.error,re,time
+          base='https://api.github.com/repos/at9870451-bit/amore-ios/actions/'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          def get(path,raw=False):
+              url=base+path+('?fresh='+str(time.time_ns()) if raw else '')
+              request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Cache-Control':'no-cache'})
+              try:
+                  response=urllib.request.build_opener(NoRedirect()).open(request,timeout=90)
+              except urllib.error.HTTPError as error:
+                  if error.code!=302: raise SystemExit('Evidence API failed HTTP '+str(error.code))
+                  # Signed storage URL is already authenticated. Never forward
+                  # the GitHub credential to a different origin.
+                  try: response=urllib.request.urlopen(error.headers['Location'],timeout=90)
+                  except urllib.error.HTTPError as failure: raise SystemExit('Evidence download failed HTTP '+str(failure.code))
+              with response:
+                  data=response.read()
+              return data.decode() if raw else json.loads(data)
+          for run in [44402540022,44402524117,44394932204,44344881010,44368428642]:
+              assert get('runs/'+str(run))['conclusion']=='success',run
+          text=get('jobs/135084410473/logs',True)
+          for name in ['testDrawerRealFooterRemainsBelowScrollAndRoutesToHostStateOnly','testEmptyMessagesDisableOriginalChatActionsButTerminalStillWorks','testMenuToggleReopensWithFreshStateAndSameActionDoesNotUseStaleClosures','testOriginalMenuActionsAreVisibleAndInvokeOnlyTheirExactHostCallback','testTopRight44PointHitAreaIsNotCoveredByCenterAvatar','testAllOriginalSetupStepRawValuesNavigateAndNativeBackRestoresParent','testDefaultLaunchRemainsComponentUnitTestHost','testSameSetupStepCanBeTappedAgainAfterNativeBack']:
+              assert re.search(r'Test Case .*'+name+r".* passed \(",text),name
+          assert re.search(r'Executed 23 tests, with 0 failures',text)
+          errors=[line for line in text.splitlines() if ': error:' in line]
+          assert len(errors)==1 and 'testSpeedAndKeepScreenOnSubmenusUseRealMenuActions' in errors[0]
+          focused=get('jobs/135122202945/logs',True)
+          assert re.search(r'Executed 24 tests, with 0 failures',focused)
+          assert re.search(r'Test Case .*testSpeedAndKeepScreenOnSubmenusUseRealMenuActions.* passed \(',focused)
+          footer=get('jobs/135149059948/logs',True)
+          assert re.search(r'Executed 24 tests, with 0 failures',footer)
+          assert re.search(r'Test Case .*testDrawerRealFooterRemainsBelowScrollAndRoutesToHostStateOnly.* passed \(',footer)
+          print('Verified 24 unit/component tests; all 9 UI cases passed across source-matched runs. Compact footer retested with no-wrap and exact-size assertions.')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44402540022
+          name: amore135-final-host
+          path: compiled-app
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44351085542
+          name: amore-static-services
+          path: deps/AmoreDeviceKit
+      - name: Merge same-source resources and validate final IPA
+        run: |
+          set -euo pipefail
+          test "$(cat compiled-app/compiled-source.txt)" = 9e38ce32e000baa474c1140bbe70d2ecc57ae534
+          unzip -q compiled-app/Amore135-host.zip
+          python3 scripts/package-amore-fusion.py Payload/Minis.app deps/AmoreDeviceKit
+          test ! -d Payload/Minis.app/NodeRuntime
+          zip -qry Amore-1.35-Online-Glass.ipa Payload
+          unzip -tq Amore-1.35-Online-Glass.ipa
+          shasum -a 256 Amore-1.35-Online-Glass.ipa | tee SHA256SUMS.txt
+          printf '%s\n' '${{ inputs.source_sha }}' > final-source.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amore-1.35-Online-Glass
+          path: |
+            Amore-1.35-Online-Glass.ipa
+            SHA256SUMS.txt
+            final-source.txt
+            fusion-verification.json
+          if-no-files-found: error
+          retention-days: 14
