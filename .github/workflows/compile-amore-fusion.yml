@@ -82,6 +82,10 @@ jobs:
         with:
           name: amore-static-services
           path: deps/AmoreDeviceKit
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
       - name: Tools and original runtime regression checks
         run: |
           brew install ninja llvm lld libarchive pkg-config meson
@@ -110,7 +114,8 @@ jobs:
           bash deps/build_ffmpeg.sh
           bash deps/build_ish.sh
           mkdir -p deps/resources
-          test -e deps/resources/alpine-rootfs.zip || printf placeholder > deps/resources/alpine-rootfs.zip
+          curl -fL --retry 3 https://github.com/at9870451-bit/amore-ios/releases/download/rootfs-v1/alpine-rootfs.zip -o deps/resources/alpine-rootfs.zip
+          printf '%s\n' '84f8d8acff68a28a0773298f67b3bed29c726f67fdb8c0f1cab8f01991a952cf  deps/resources/alpine-rootfs.zip' | shasum -a 256 -c -
           bash deps/build_rclone_ios.sh
       - name: Compile fused Amore
         run: |
