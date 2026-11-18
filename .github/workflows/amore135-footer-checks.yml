@@ -1,0 +1,38 @@
+name: Amore1.35 compact footer acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  components:
+    name: Compact footer no-wrap and snapshot checks
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Real footer dimensions label containment taps and light-dark
+        env:
+          AMORE134_TEST_LOG: ${{ github.workspace }}/amore135-footer.log
+          AMORE134_SNAPSHOTS: ${{ github.workspace }}/amore135-footer-snapshots
+          AMORE_TEST_ONLY: |
+            Amore134Tests
+            Amore134NavigationUITests/Amore135HeaderUITests/testDrawerRealFooterRemainsBelowScrollAndRoutesToHostStateOnly
+        run: bash scripts/test-amore134-components.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore135-footer-evidence
+          path: |
+            amore135-footer.log
+            amore135-footer-snapshots
+          if-no-files-found: warn
+          retention-days: 14
