@@ -1,0 +1,104 @@
+name: Compile final Amore1.35 host
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Fixed fusion source SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  app:
+    name: Single Amore app and data store
+    runs-on: macos-15-intel
+    timeout-minutes: 110
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+          submodules: recursive
+      - name: Verify successful static service source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:vendor/poki)" = e047ea46f786d131b85c1ace27c5233a5f810c97
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+      - uses: actions/download-artifact@v4
+        with:
+          name: amore-static-services
+          path: deps/AmoreDeviceKit
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44351085542
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+          cache: false
+      - name: Tools and original runtime regression checks
+        run: |
+          brew install ninja llvm lld libarchive pkg-config meson
+          cp src/ios/Configs/ProviderCustomization.xcconfig.example src/ios/Configs/ProviderCustomization.xcconfig
+          python3 scripts/test-node-online-source.py
+          swift scripts/Amore135AvatarPipelineTests.swift .
+          swift test --package-path src/ios/Packages/AmorePluginArchive 2>&1 | tee fusion-archive-tests.log
+          bash scripts/test-plugin-import.sh
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps/lame-build
+            deps/ffmpeg-6.1.2
+            deps/frameworks
+            deps/ish/build-ios
+            deps/libs
+            deps/include
+            deps/resources
+            deps/build/rclone
+          key: native-deps-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.3-${{ hashFiles('deps/*.sh') }}
+      - name: Verify online-only Node source and remove stale bundle
+        run: |
+          python3 scripts/test-node-online-source.py
+          test ! -d src/ios/NodeRuntime
+      - name: Build native runtime
+        run: |
+          set -euo pipefail
+          chmod -R +x deps scripts
+          export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
+          bash deps/build_lame.sh
+          bash deps/build_ffmpeg.sh
+          bash deps/build_ish.sh
+          mkdir -p deps/resources
+          curl -fL --retry 3 https://github.com/at9870451-bit/amore-ios/releases/download/rootfs-v1/alpine-rootfs.zip -o deps/resources/alpine-rootfs.zip
+          printf '%s\n' '84f8d8acff68a28a0773298f67b3bed29c726f67fdb8c0f1cab8f01991a952cf  deps/resources/alpine-rootfs.zip' | shasum -a 256 -c -
+          bash deps/build_rclone_ios.sh
+      - name: Compile fused Amore
+        run: |
+          set -o pipefail
+          xcodebuild -project src/ios/Minis.xcodeproj -scheme Minis -configuration Release -derivedDataPath build -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build 2>&1 | tee fusion-app-build.log
+      - name: Archive intermediate compiled App (not delivery IPA)
+        run: |
+          set -euo pipefail
+          mkdir -p Payload
+          ditto build/Build/Products/Release-iphoneos/Minis.app Payload/Minis.app
+          test ! -d Payload/Minis.app/NodeRuntime
+          zip -qry Amore135-host.zip Payload
+          printf '%s\n' '${{ inputs.source_sha }}' > compiled-source.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amore135-final-host
+          path: |
+            Amore135-host.zip
+            compiled-source.txt
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fusion-app-diagnostics
+          path: |
+            fusion-*.log
+            plugin-install-tests.log
+          if-no-files-found: warn
