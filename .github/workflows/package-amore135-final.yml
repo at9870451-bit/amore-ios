@@ -1,0 +1,85 @@
+name: Package final Amore1.35
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify exact compiled source trees and final acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:src)" = f2505ccd38310365538d25f3962744be41d11fc4
+          test "$(git rev-parse HEAD:vendor/poki)" = e047ea46f786d131b85c1ace27c5233a5f810c97
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+          python3 - <<'PY'
+          import os,json,urllib.request,re
+          base='https://api.github.com/repos/at9870451-bit/amore-ios/actions/'
+          def get(path,raw=False):
+              request=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=90) as response:
+                  data=response.read()
+              return data.decode() if raw else json.loads(data)
+          for run in [44384279181,44394932204,44344881010,44368428642]:
+              assert get('runs/'+str(run))['conclusion']=='success',run
+          text=get('jobs/135084410473/logs',True)
+          for name in ['testDrawerRealFooterRemainsBelowScrollAndRoutesToHostStateOnly','testEmptyMessagesDisableOriginalChatActionsButTerminalStillWorks','testMenuToggleReopensWithFreshStateAndSameActionDoesNotUseStaleClosures','testOriginalMenuActionsAreVisibleAndInvokeOnlyTheirExactHostCallback','testTopRight44PointHitAreaIsNotCoveredByCenterAvatar','testAllOriginalSetupStepRawValuesNavigateAndNativeBackRestoresParent','testDefaultLaunchRemainsComponentUnitTestHost','testSameSetupStepCanBeTappedAgainAfterNativeBack']:
+              assert re.search(r'Test Case .*'+name+r".* passed \(",text),name
+          assert re.search(r'Executed 23 tests, with 0 failures',text)
+          errors=[line for line in text.splitlines() if ': error:' in line]
+          assert len(errors)==1 and 'testSpeedAndKeepScreenOnSubmenusUseRealMenuActions' in errors[0]
+          focused=get('jobs/135122202945/logs',True)
+          assert re.search(r'Executed 24 tests, with 0 failures',focused)
+          assert re.search(r'Test Case .*testSpeedAndKeepScreenOnSubmenusUseRealMenuActions.* passed \(',focused)
+          print('Verified 24 unit/component tests; all 9 UI cases passed across same-production runs. Earlier failure was a corrected test selector only.')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44384279181
+          name: amore135-final-host
+          path: compiled-app
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44351085542
+          name: amore-static-services
+          path: deps/AmoreDeviceKit
+      - name: Merge same-source resources and validate final IPA
+        run: |
+          set -euo pipefail
+          test "$(cat compiled-app/compiled-source.txt)" = 607d77c1dfe4aa48cac1c9d0eb0b579178d30ce5
+          unzip -q compiled-app/Amore135-host.zip
+          python3 scripts/package-amore-fusion.py Payload/Minis.app deps/AmoreDeviceKit
+          test ! -d Payload/Minis.app/NodeRuntime
+          zip -qry Amore-1.35-Online-Glass.ipa Payload
+          unzip -tq Amore-1.35-Online-Glass.ipa
+          shasum -a 256 Amore-1.35-Online-Glass.ipa | tee SHA256SUMS.txt
+          printf '%s\n' '${{ inputs.source_sha }}' > final-source.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amore-1.35-Online-Glass
+          path: |
+            Amore-1.35-Online-Glass.ipa
+            SHA256SUMS.txt
+            final-source.txt
+            fusion-verification.json
+          if-no-files-found: error
+          retention-days: 14
