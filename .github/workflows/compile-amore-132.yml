@@ -1,0 +1,188 @@
+name: Compile Amore 1.32 Original Poki
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Immutable OpenMinis source commit
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: amore132-${{ inputs.source_sha }}
+  cancel-in-progress: false
+jobs:
+  original:
+    name: Compile original Poki framework
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          bash scripts/test-original-poki-host.sh
+      - name: Tools
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
+          rustup update stable --no-self-update
+          rustup default stable
+          xcodebuild -version
+          rustc --version
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor/poki/native/launcher/target
+            build-poki/SourcePackages
+          key: poki-original-132-${{ runner.arch }}-xc26.3-${{ hashFiles('vendor/poki/native/launcher/Cargo.lock','vendor/poki/native/ios-app/project-amore.yml') }}
+      - name: PokiCore tests
+        run: |
+          set -o pipefail
+          swift test --package-path vendor/poki/native/ios/PokiCore 2>&1 | tee poki-core-tests.log
+      - name: Build original framework
+        run: bash scripts/build-poki-original.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: original-poki-132
+          path: |
+            build-poki/Build/Products/Release-iphoneos/Poki.framework
+            build-poki/Build/Products/Release-iphoneos/WebRTC.framework
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: poki-132-diagnostics
+          path: |
+            poki-core-tests.log
+            build-poki/*.log
+            build-poki/*.txt
+          if-no-files-found: warn
+          retention-days: 7
+  host:
+    name: Compile Amore 1.32 host
+    runs-on: macos-15
+    timeout-minutes: 115
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+          submodules: recursive
+      - name: Check bundled runtime and original plugin tests
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          python3 scripts/verify-node-bundle.py
+          swift test --package-path src/ios/Packages/AmorePluginArchive 2>&1 | tee archive-tests.log
+          bash scripts/test-plugin-import.sh
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.5'
+          cache: false
+      - name: Build tools
+        run: |
+          brew install ninja llvm lld libarchive pkg-config meson
+          cp src/ios/Configs/ProviderCustomization.xcconfig.example src/ios/Configs/ProviderCustomization.xcconfig
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps/lame-build
+            deps/ffmpeg-6.1.2
+            deps/frameworks
+            deps/ish/build-ios
+            deps/libs
+            deps/include
+            deps/resources
+            deps/build/rclone
+          key: native-deps-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.3-${{ hashFiles('deps/*.sh') }}
+      - name: Native dependencies
+        run: |
+          set -euo pipefail
+          chmod -R +x deps scripts
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/opt/lld/bin:$PATH"
+          bash deps/build_lame.sh
+          bash deps/build_ffmpeg.sh
+          bash deps/build_ish.sh
+          mkdir -p deps/resources
+          printf 'placeholder' > deps/resources/alpine-rootfs.zip
+          bash deps/build_rclone_ios.sh
+      - name: Compile main app
+        run: |
+          set -o pipefail
+          xcodebuild -project src/ios/Minis.xcodeproj -scheme Minis -configuration Release -derivedDataPath build -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build 2>&1 | tee app-build.log
+      - name: Archive host bundle
+        run: |
+          set -euo pipefail
+          test -d build/Build/Products/Release-iphoneos/Minis.app
+          tar -czf Amore-132-host.tar.gz -C build/Build/Products/Release-iphoneos Minis.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amore-132-host
+          path: Amore-132-host.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore-132-diagnostics
+          path: |
+            app-build.log
+            archive-tests.log
+            plugin-install-tests.log
+          if-no-files-found: warn
+          retention-days: 7
+  package:
+    name: Verify and package Amore 1.32 IPA
+    needs: [original, host]
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-poki-132
+          path: original-frameworks
+      - uses: actions/download-artifact@v4
+        with:
+          name: amore-132-host
+          path: host
+      - name: Embed and verify
+        run: |
+          set -euo pipefail
+          mkdir -p Payload
+          tar -xzf host/Amore-132-host.tar.gz -C Payload
+          python3 scripts/embed-poki-original.py Payload/Minis.app original-frameworks
+          test -s Payload/Minis.app/Frameworks/Poki.framework/Poki
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Minis.app/Info.plist
+          xcrun otool -L Payload/Minis.app/Frameworks/Poki.framework/Poki | tee framework-links.txt
+          xcrun nm -gU Payload/Minis.app/Frameworks/Poki.framework/Poki | rg 'OBJC_CLASS_.*AmorePokiEntry'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Minis.app/Info.plist)" = 1.32
+          printf '%s\n' '${{ inputs.source_sha }}' > source-commit.txt
+          zip -qry Amore-1.32-Poki-Original.ipa Payload
+          unzip -tq Amore-1.32-Poki-Original.ipa
+          shasum -a 256 Amore-1.32-Poki-Original.ipa | tee IPA-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amore-1.32-Poki-Original
+          path: |
+            Amore-1.32-Poki-Original.ipa
+            IPA-SHA256.txt
+            source-commit.txt
+            framework-links.txt
+          if-no-files-found: error
+          retention-days: 7
