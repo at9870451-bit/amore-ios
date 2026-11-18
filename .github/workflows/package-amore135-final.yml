@@ -28,11 +28,22 @@ jobs:
           test "$(git rev-parse HEAD:vendor/poki)" = e047ea46f786d131b85c1ace27c5233a5f810c97
           test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
           python3 - <<'PY'
-          import os,json,urllib.request,re
+          import os,json,urllib.request,urllib.error,re,time
           base='https://api.github.com/repos/at9870451-bit/amore-ios/actions/'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
           def get(path,raw=False):
-              request=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(request,timeout=90) as response:
+              url=base+path+('?fresh='+str(time.time_ns()) if raw else '')
+              request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Cache-Control':'no-cache'})
+              try:
+                  response=urllib.request.build_opener(NoRedirect()).open(request,timeout=90)
+              except urllib.error.HTTPError as error:
+                  if error.code!=302: raise SystemExit('Evidence API failed HTTP '+str(error.code))
+                  # Signed storage URL is already authenticated. Never forward
+                  # the GitHub credential to a different origin.
+                  try: response=urllib.request.urlopen(error.headers['Location'],timeout=90)
+                  except urllib.error.HTTPError as failure: raise SystemExit('Evidence download failed HTTP '+str(failure.code))
+              with response:
                   data=response.read()
               return data.decode() if raw else json.loads(data)
           for run in [44384279181,44394932204,44344881010,44368428642]:
