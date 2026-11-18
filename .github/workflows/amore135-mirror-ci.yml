@@ -1,0 +1,45 @@
+name: Amore 1.35 mirror installation matrix
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  mirrors:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+          submodules: recursive
+      - name: Install disposable QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 curl qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64
+      - name: Run fresh Alpine chroot installs for every mirror
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/mirror-installation"
+          set +e
+          python3 scripts/test-mirror-installation.py --output "$RUNNER_TEMP/mirror-installation" --workers 2
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/mirror-installation/installation-results.json"
+          echo "mirror_matrix_exit=$status"
+          # Keep failed sources in the evidence; a regional/third-party mirror
+          # failure is a test result, not permission to delete or bypass it.
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore135-mirror-installation
+          path: ${{ runner.temp }}/mirror-installation
+          if-no-files-found: error
+          retention-days: 14
