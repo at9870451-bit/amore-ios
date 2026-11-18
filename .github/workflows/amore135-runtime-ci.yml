@@ -1,0 +1,32 @@
+name: Amore runtime catalog installation
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Setup disposable aarch64 runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64
+      - name: Install and run every production runtime family
+        run: python3 scripts/test-runtime-catalog-install.py --output "$RUNNER_TEMP/runtime-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore135-runtime-catalog
+          path: ${{ runner.temp }}/runtime-results
+          if-no-files-found: error
+          retention-days: 14
