@@ -27,15 +27,16 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           python3 scripts/amore-fusion-static-acceptance.py
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             vendor/poki/native/launcher/target
-            build-device-kit/SourcePackages
-          key: amore-fusion-v1-${{ runner.arch }}-${{ inputs.source_sha }}
+            build-device-kit
+          key: amore-fusion-v2-${{ runner.arch }}-${{ inputs.source_sha }}
           restore-keys: |
+            amore-fusion-v2-${{ runner.arch }}-
             amore-fusion-v1-${{ runner.arch }}-
             poki132-retry-xc26.3-${{ runner.arch }}-
       - name: Compile statically linked device services
@@ -55,6 +56,15 @@ jobs:
             device-*.txt
             deps/AmoreDeviceKit/static-link-inputs.json
           if-no-files-found: warn
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor/poki/native/launcher/target
+            build-device-kit
+          key: amore-fusion-v2-${{ runner.arch }}-${{ inputs.source_sha }}
   app:
     name: Single Amore app and data store
     needs: device
