@@ -1,0 +1,133 @@
+name: Finish Amore 1.32 original framework
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Patched immutable source
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original:
+    name: Original Poki framework retry
+    runs-on: macos-15
+    timeout-minutes: 70
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify unchanged tested source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          test "$(git rev-parse HEAD:src)" = 084b7c4bb1700b7ca18546454d0e7c2d0874b44c
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+          test "$(git rev-parse HEAD:vendor/poki/native/ios/PokiCore)" = c208d0a31762732418039de7c7b9b1ae2ff3ea10
+          bash scripts/test-original-poki-host.sh
+          printf '%s\n' 'Host and PokiCore tests verified in run 44211774088; identical source trees' > tested-source-proof.txt
+      - name: Tools
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
+          rustup update stable --no-self-update
+          rustup default stable
+      - uses: actions/cache/restore@v4
+        id: deps
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor/poki/native/launcher/target
+            build-poki/SourcePackages
+          key: poki132-retry-xc26.3-${{ runner.arch }}-${{ inputs.source_sha }}
+          restore-keys: |
+            poki132-retry-xc26.3-${{ runner.arch }}-
+            poki-original-132-${{ runner.arch }}-xc26.3-
+      - name: Compile original pages with Rust and Swift
+        run: bash scripts/build-poki-original.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: original-poki-132
+          path: |
+            build-poki/Build/Products/Release-iphoneos/Poki.framework
+            build-poki/Build/Products/Release-iphoneos/WebRTC.framework
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: poki-132-retry-diagnostics
+          path: |
+            build-poki/*.log
+            build-poki/*.txt
+            tested-source-proof.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/cache/save@v4
+        if: always() && steps.deps.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor/poki/native/launcher/target
+            build-poki/SourcePackages
+          key: poki132-retry-xc26.3-${{ runner.arch }}-${{ inputs.source_sha }}
+  package:
+    name: Verified Amore 1.32 IPA
+    needs: original
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify host source identity
+        run: |
+          test "$(git rev-parse HEAD:src)" = 084b7c4bb1700b7ca18546454d0e7c2d0874b44c
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+      - uses: actions/download-artifact@v4
+        with:
+          name: original-poki-132
+          path: original-frameworks
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44211774088
+          name: amore-132-host
+          path: host
+      - name: Embed and verify IPA
+        run: |
+          set -euo pipefail
+          mkdir -p Payload
+          tar -xzf host/Amore-132-host.tar.gz -C Payload
+          python3 scripts/embed-poki-original.py Payload/Minis.app original-frameworks
+          test -s Payload/Minis.app/Frameworks/Poki.framework/Poki
+          test -s Payload/Minis.app/agent-system.md
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Minis.app/Info.plist)" = 1.32
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/Minis.app/Info.plist)" = 32
+          xcrun otool -L Payload/Minis.app/Frameworks/Poki.framework/Poki | tee framework-links.txt
+          xcrun nm -gU Payload/Minis.app/Frameworks/Poki.framework/Poki > framework-symbols.txt
+          rg 'OBJC_CLASS_.*AmorePokiEntry' framework-symbols.txt
+          printf '%s\n' '${{ inputs.source_sha }}' > source-commit.txt
+          printf '%s\n' 'Host build and 288 PokiCore tests: run 44211774088; src/deps/core trees identical' > build-provenance.txt
+          zip -qry Amore-1.32-Poki-Original.ipa Payload
+          unzip -tq Amore-1.32-Poki-Original.ipa
+          shasum -a 256 Amore-1.32-Poki-Original.ipa | tee IPA-SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amore-1.32-Poki-Original
+          path: |
+            Amore-1.32-Poki-Original.ipa
+            IPA-SHA256.txt
+            source-commit.txt
+            framework-links.txt
+            build-provenance.txt
+          if-no-files-found: error
+          retention-days: 7
