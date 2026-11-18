@@ -26,7 +26,7 @@ jobs:
       - name: Check tested static service source
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD:vendor/poki)" = 33e53aa16256339ef38a4a14dc969bb6ab0910cf
+          test "$(git rev-parse HEAD:vendor/poki)" = 97854403ff295679503704d416f27d7ecc9eb25e
           test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
       - uses: actions/download-artifact@v4
         with:
@@ -34,7 +34,7 @@ jobs:
           path: deps/AmoreDeviceKit
           github-token: ${{ github.token }}
           repository: at9870451-bit/amore-ios
-          run-id: 44289338705
+          run-id: 44298837600
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
