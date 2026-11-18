@@ -1,0 +1,75 @@
+name: Package single Amore fusion
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Packaging source SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify compiled source identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:src)" = 92db3c396985237f55dc94a7dec328239fa48f36
+          test "$(git rev-parse HEAD:vendor)" = dae9052922c30141d0d3342a79fa2957dbc5f8c1
+          test "$(git rev-parse HEAD:deps)" = 3b15158b6aeb7392375454d35181a5100cd13276
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44249843055
+          name: Amore-1.33-Fusion
+          path: compiled-app
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: at9870451-bit/amore-ios
+          run-id: 44244896751
+          name: amore-static-services
+          path: deps/AmoreDeviceKit
+      - name: Restore host localization and merge without overwriting
+        run: |
+          set -euo pipefail
+          unzip -q compiled-app/Amore-1.33-Fusion.ipa
+          mkdir host-strings
+          xcrun xcstringstool compile --output-directory host-strings src/ios/Localizable.xcstrings
+          ditto host-strings Payload/Minis.app
+          python3 scripts/package-amore-fusion.py Payload/Minis.app deps/AmoreDeviceKit
+          test ! -d Payload/Minis.app/Frameworks/Poki.framework
+          test ! -d Payload/Minis.app/Frameworks/AmoreDeviceKit.framework
+          python3 - <<'PY'
+          import hashlib,json,plistlib,pathlib
+          app=pathlib.Path('Payload/Minis.app')
+          assert hashlib.sha256((app/'alpine-rootfs.zip').read_bytes()).hexdigest()=='84f8d8acff68a28a0773298f67b3bed29c726f67fdb8c0f1cab8f01991a952cf'
+          for lang in ['en','zh-Hans','zh-Hant']:
+              d=plistlib.loads((app/(lang+'.lproj')/'Localizable.strings').read_bytes())
+              assert 'Allow Amore Agent to control this iPhone' in d
+          print('Verified real Alpine 3.21 ARM64 rootfs and original Amore localizations')
+          PY
+          zip -qry Amore-1.33-Fusion.ipa Payload
+          unzip -tq Amore-1.33-Fusion.ipa
+          shasum -a 256 Amore-1.33-Fusion.ipa | tee FUSION-SHA256.txt
+          printf '%s\n' '${{ inputs.source_sha }}' > fusion-source.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Amore-1.33-Fusion-Final
+          path: |
+            Amore-1.33-Fusion.ipa
+            FUSION-SHA256.txt
+            fusion-source.txt
+            fusion-verification.json
+          if-no-files-found: error
+          retention-days: 7
