@@ -1,0 +1,194 @@
+name: Amore1.39 transparent live history drawer
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Fixed fusion source SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  app:
+    name: Final Amore 1.39 App
+    needs:
+    - components
+    runs-on: macos-15-intel
+    timeout-minutes: 110
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: at9870451-bit/OpenMinis
+        ref: ${{ inputs.source_sha }}
+        submodules: recursive
+    - name: Verify identical native source and successful real test gates
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "set -euo pipefail\ntest \"$(git rev-parse HEAD:vendor/poki)\" = 45e03f840c4140a8e18a88fda0aa1d9f76a8fb39\ntest \"$(git rev-parse HEAD:deps)\" = 3b15158b6aeb7392375454d35181a5100cd13276\n\
+        python3 - <<'PY'\nimport os,json,urllib.request\nbase='https://api.github.com/repos/at9870451-bit/amore-ios/actions/runs/44503542076/jobs?per_page=100'\n\
+        r=urllib.request.Request(base,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})\njobs=json.load(urllib.request.urlopen(r,timeout=60))['jobs']\n\
+        for name in ['Static Amore device and UI services','Actual Swift connection monitor regression','Exact production device wake and foreground lifecycle regression','Production\
+        \ SSE tool completion offline fixtures','Real VoiceSessionManager lifecycle regression']:\n assert any(x['name']==name and x['conclusion']=='success' for\
+        \ x in jobs),name\nprint('Verified identical native source tree and all completed real regression gates')\nPY"
+    - uses: actions/download-artifact@v4
+      with:
+        name: amore-static-services
+        path: deps/AmoreDeviceKit
+        github-token: ${{ github.token }}
+        repository: at9870451-bit/amore-ios
+        run-id: 44503542076
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 1.25.5
+        cache: false
+    - name: Tools and original runtime regression checks
+      run: 'python3 scripts/test-amore139-drawer-source.py
+
+        brew install ninja llvm lld libarchive pkg-config meson
+
+        cp src/ios/Configs/ProviderCustomization.xcconfig.example src/ios/Configs/ProviderCustomization.xcconfig
+
+        python3 scripts/test-node-online-source.py
+
+        python3 scripts/test-amore136-performance-policy.py
+
+        python3 scripts/test-amore136-settings-source.py
+
+        swift scripts/Amore135AvatarPipelineTests.swift .
+
+        swift test --package-path src/ios/Packages/AmorePluginArchive 2>&1 | tee fusion-archive-tests.log
+
+        bash scripts/test-plugin-import.sh
+
+        '
+    - uses: actions/cache@v4
+      with:
+        path: 'deps/lame-build
+
+          deps/ffmpeg-6.1.2
+
+          deps/frameworks
+
+          deps/ish/build-ios
+
+          deps/libs
+
+          deps/include
+
+          deps/resources
+
+          deps/build/rclone
+
+          '
+        key: native-deps-v2-${{ runner.os }}-${{ runner.arch }}-xcode26.3-${{ hashFiles('deps/*.sh') }}
+    - name: Verify online-only Node source and remove stale bundle
+      run: 'python3 scripts/test-node-online-source.py
+
+        test ! -d src/ios/NodeRuntime
+
+        '
+    - name: Build native runtime
+      run: 'set -euo pipefail
+
+        chmod -R +x deps scripts
+
+        export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
+
+        bash deps/build_lame.sh
+
+        bash deps/build_ffmpeg.sh
+
+        bash deps/build_ish.sh
+
+        mkdir -p deps/resources
+
+        curl -fL --retry 3 https://github.com/at9870451-bit/amore-ios/releases/download/rootfs-v1/alpine-rootfs.zip -o deps/resources/alpine-rootfs.zip
+
+        printf ''%s\n'' ''84f8d8acff68a28a0773298f67b3bed29c726f67fdb8c0f1cab8f01991a952cf  deps/resources/alpine-rootfs.zip'' | shasum -a 256 -c -
+
+        bash deps/build_rclone_ios.sh
+
+        '
+    - name: Compile fused Amore
+      run: 'set -o pipefail
+
+        xcodebuild -project src/ios/Minis.xcodeproj -scheme Minis -configuration Release -derivedDataPath build -destination ''generic/platform=iOS'' CODE_SIGNING_ALLOWED=NO
+        build 2>&1 | tee fusion-app-build.log
+
+        '
+    - name: Verify absence of embedded Poki app and package
+      run: 'set -euo pipefail
+
+        mkdir -p Payload
+
+        ditto build/Build/Products/Release-iphoneos/Minis.app Payload/Minis.app
+
+        python3 scripts/package-amore-fusion.py Payload/Minis.app deps/AmoreDeviceKit
+
+        zip -qry Amore-1.39-Transparent-Drawer.ipa Payload
+
+        unzip -tq Amore-1.39-Transparent-Drawer.ipa
+
+        shasum -a 256 Amore-1.39-Transparent-Drawer.ipa | tee FUSION-SHA256.txt
+
+        printf ''%s\n'' ''${{ inputs.source_sha }}'' > fusion-source.txt
+
+        '
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Amore-1.39-Transparent-Drawer
+        path: 'Amore-1.39-Transparent-Drawer.ipa
+
+          FUSION-SHA256.txt
+
+          fusion-source.txt
+
+          fusion-verification.json
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: fusion-app-diagnostics
+        path: 'fusion-*.log
+
+          plugin-install-tests.log
+
+          '
+        if-no-files-found: warn
+  components:
+    name: Transparent drawer pixels and original controls
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: at9870451-bit/OpenMinis
+        ref: ${{ inputs.source_sha }}
+    - name: Live transcript transparency, hit routing, draft retention and previous controls
+      env:
+        AMORE134_TEST_LOG: ${{ github.workspace }}/amore139-components.log
+        AMORE134_SNAPSHOTS: ${{ github.workspace }}/amore139-component-snapshots
+        AMORE_TEST_ONLY: 'Amore134Tests
+
+          Amore134NavigationUITests/Amore139DrawerUITests
+
+          Amore134NavigationUITests/Amore135HeaderUITests/testDrawerRealFooterRemainsBelowScrollAndRoutesToHostStateOnly
+
+          Amore134NavigationUITests/Amore138ComposerUITests'
+      run: bash scripts/test-amore139-components.sh
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: amore139-components
+        path: 'amore139-components.log
+
+          amore139-component-snapshots'
+        if-no-files-found: warn
