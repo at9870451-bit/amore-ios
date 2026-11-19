@@ -1,5 +1,5 @@
 name: Amore 1.37 pairing handshake recovery
-true:
+'on':
   workflow_dispatch:
     inputs:
       source_sha:
