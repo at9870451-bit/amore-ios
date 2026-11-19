@@ -1,0 +1,35 @@
+name: Amore1.36 settings glass snapshot acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  settings:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Production settings style in mounted light-dark windows
+        env:
+          AMORE134_TEST_LOG: ${{ github.workspace }}/amore136-settings.log
+          AMORE134_SNAPSHOTS: ${{ github.workspace }}/amore136-settings-snapshots
+          AMORE_TEST_ONLY: Amore134Tests/Amore136SettingsStyleTests
+        run: bash scripts/test-amore136-components.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore136-settings-evidence
+          path: |
+            amore136-settings.log
+            amore136-settings-snapshots
+          if-no-files-found: warn
+          retention-days: 14
