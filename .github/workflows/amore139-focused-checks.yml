@@ -1,0 +1,37 @@
+name: Amore1.39 focused drawer interaction
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  checks:
+    name: Actual glass drawer gestures and accessibility
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Transparent drawer interaction and backdrop regressions
+        env:
+          AMORE134_TEST_LOG: ${{ github.workspace }}/amore139-focused.log
+          AMORE134_SNAPSHOTS: ${{ github.workspace }}/amore139-focused-snapshots
+          AMORE_TEST_ONLY: |
+            Amore134Tests/Amore139DrawerTests
+            Amore134NavigationUITests/Amore139DrawerUITests
+        run: bash scripts/test-amore139-components.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore139-focused-evidence
+          path: |
+            amore139-focused.log
+            amore139-focused-snapshots
+          if-no-files-found: warn
