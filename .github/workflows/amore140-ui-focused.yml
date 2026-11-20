@@ -1,0 +1,40 @@
+name: Amore1.40 focused UI compatibility
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha: {required: true, type: string}
+permissions: {contents: read}
+jobs:
+  ui:
+    name: Original composer and menu UI on fixed source
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: at9870451-bit/OpenMinis
+          ref: ${{ inputs.source_sha }}
+      - name: Verify 1.38 baseline and new app icons
+        run: |
+          python3 scripts/test-amore140-policy.py
+          python3 scripts/test-amore-app-capsules.py
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - name: Real menu and composer regression
+        env:
+          AMORE134_TEST_LOG: ${{ github.workspace }}/amore140-ui.log
+          AMORE134_SNAPSHOTS: ${{ github.workspace }}/amore140-ui-snapshots
+          AMORE_TEST_ONLY: |
+            Amore134Tests
+            Amore134NavigationUITests/Amore135HeaderUITests
+            Amore134NavigationUITests/Amore138ComposerUITests
+        run: bash scripts/test-amore138-components.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amore140-ui-results
+          path: |
+            amore140-ui.log
+            amore140-ui-snapshots
+          if-no-files-found: warn
